@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: toolchain-e2e
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: toolchain-e2e
+  template:
+    metadata:
+      labels:
+        name: toolchain-e2e
+    spec:
+      serviceAccountName: toolchain-e2e
+      containers:
+      - name: toolchain-e2e
+        # Replace this with the built image name
+        image: REPLACE_IMAGE
+        command:
+        - toolchain-e2e
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: CLONEREFS_OPTIONS
+          value: REPLACE_CLONEREFS_OPTIONS
+        - name: E2E_REPO_PATH
+          value: REPLACE_E2E_REPO_PATH
+        - name: REPO_NAME
+          value: REPLACE_REPO_NAME

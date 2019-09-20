@@ -16,6 +16,9 @@ IS_KUBE_ADMIN := $(shell oc whoami | grep "kube:admin")
 .PHONY: test-e2e-keep-namespaces
 test-e2e-keep-namespaces: login-as-admin deploy-member deploy-host setup-kubefed e2e-setup e2e-run
 
+.PHONY: deploy-ops
+deploy-ops: deploy-member deploy-host
+
 .PHONY: test-e2e-local
 test-e2e-local:
 	$(MAKE) test-e2e HOST_REPO_PATH=../host-operator MEMBER_REPO_PATH=../member-operator
@@ -109,7 +112,7 @@ endif
 	oc apply -f ${MEMBER_REPO_PATH}/deploy/cluster_role.yaml
 	cat ${MEMBER_REPO_PATH}/deploy/cluster_role_binding.yaml | sed s/\REPLACE_NAMESPACE/$(MEMBER_NS)/ | oc apply -f -
 	oc apply -f ${MEMBER_REPO_PATH}/deploy/crds
-	sed -e 's|REPLACE_IMAGE|registry.svc.ci.openshift.org/codeready-toolchain/member-operator-v0.1:member-operator|g' ${MEMBER_REPO_PATH}/deploy/operator.yaml  | oc apply -f -
+	sed -e 's|REPLACE_IMAGE|registry.svc.ci.openshift.org/${OPENSHIFT_BUILD_NAMESPACE}/stable:toolchain-e2e|g' ${MEMBER_REPO_PATH}/deploy/operator.yaml  | sed -e 's|REPLACE_CLONEREFS_OPTIONS|${CLONEREFS_OPTIONS}|g`  | sed -e 's|REPLACE_E2E_REPO_PATH|${MEMBER_REPO_PATH}|g` | sed -e 's|REPLACE_REPO_NAME|member-operator|g` | oc apply -f -
 
 .PHONY: deploy-host
 deploy-host:
@@ -127,7 +130,7 @@ endif
 	oc apply -f ${HOST_REPO_PATH}/deploy/cluster_role.yaml
 	cat ${HOST_REPO_PATH}/deploy/cluster_role_binding.yaml | sed s/\REPLACE_NAMESPACE/$(HOST_NS)/ | oc apply -f -
 	oc apply -f ${HOST_REPO_PATH}/deploy/crds
-	sed -e 's|REPLACE_IMAGE|registry.svc.ci.openshift.org/codeready-toolchain/host-operator-v0.1:host-operator|g' ${HOST_REPO_PATH}/deploy/operator.yaml  | oc apply -f -
+	sed -e 's|REPLACE_IMAGE|registry.svc.ci.openshift.org/${OPENSHIFT_BUILD_NAMESPACE}/stable:toolchain-e2e|g' ${MEMBER_REPO_PATH}/deploy/operator.yaml  | sed -e 's|REPLACE_CLONEREFS_OPTIONS|${CLONEREFS_OPTIONS}|g`  | sed -e 's|REPLACE_E2E_REPO_PATH|${HOST_REPO_PATH}|g` | sed -e 's|REPLACE_REPO_NAME|host-operator|g` | oc apply -f -
 
 .PHONY: prepare-e2e-repo
 prepare-e2e-repo:
@@ -152,3 +155,14 @@ ifneq ($(CLONEREFS_OPTIONS),)
 		git --git-dir=${E2E_REPO_PATH}/.git --work-tree=${E2E_REPO_PATH} merge FETCH_HEAD; \
 	fi;
 endif
+
+.PHONY: build-and-deploy-operator
+build-and-deploy-operator:
+ifeq ($(OPENSHIFT_BUILD_NAMESPACE),)
+	$(eval IMAGE_NAME := docker.io/${GO_PACKAGE_ORG_NAME}/${REPO_NAME}:${GIT_COMMIT_ID_SHORT})
+else
+	$(eval IMAGE_NAME := registry.svc.ci.openshift.org/${GO_PACKAGE_ORG_NAME}/${REPO_NAME}:${GIT_COMMIT_ID_SHORT})
+endif
+	$(MAKE) -C ${E2E_REPO_PATH} build
+	docker build -f ${E2E_REPO_PATH}/build/Dockerfile -t ${IMAGE_NAME} ${E2E_REPO_PATH}
+	sed -e 's|REPLACE_IMAGE|${IMAGE_NAME}|g' ${E2E_REPO_PATH}/deploy/operator.yaml  | oc apply -f -
