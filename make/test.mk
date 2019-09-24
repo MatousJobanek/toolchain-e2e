@@ -12,6 +12,7 @@ PULL_SHA := $(shell jq -r '.refs[0].pulls[0].sha' <<< $${CLONEREFS_OPTIONS} | tr
 
 IS_CRC := $(shell crc status /dev/null 2>&1 | grep Running)
 IS_KUBE_ADMIN := $(shell oc whoami | grep "kube:admin")
+FILE_WITH_IMAGE_NAME = /tmp/image_name
 
 .PHONY: test-e2e-keep-namespaces
 test-e2e-keep-namespaces: login-as-admin deploy-member deploy-host setup-kubefed e2e-run
@@ -95,9 +96,6 @@ clean-e2e-namespaces:
 
 .PHONY: build-with-operators
 build-with-operators: build get-member-operator-repo get-host-operator-repo
-	# operators are built, now copy the operators' binaries to make them available for CI
-	cp ${MEMBER_REPO_PATH}/build/_output/bin/member-operator build/_output/bin/member-operator
-	cp ${HOST_REPO_PATH}/build/_output/bin/host-operator build/_output/bin/host-operator
 
 .PHONY: get-member-operator-repo
 get-member-operator-repo:
@@ -120,8 +118,10 @@ ifeq ($(HOST_REPO_PATH),)
 endif
 
 .PHONY: prepare-e2e-repo
-prepare-e2e-repo:
+prepare-e2e-repo: reset-tmp
 ifneq ($(CLONEREFS_OPTIONS),)
+	# by default use the image built from master
+	echo "registry.svc.ci.openshift.org/codeready-toolchain/${REPO_NAME}-v0.1:${REPO_NAME}" > ${E2E_REPO_PATH}${FILE_WITH_IMAGE_NAME}
 	@echo "using author link ${AUTHOR_LINK}"
 	@echo "using pull sha ${PULL_SHA}"
 	# get branch ref of the fork the PR was created from
@@ -140,8 +140,24 @@ ifneq ($(CLONEREFS_OPTIONS),)
 		git --git-dir=${E2E_REPO_PATH}/.git --work-tree=${E2E_REPO_PATH} fetch external ${BRANCH_REF}; \
 		# merge the branch with master \
 		git --git-dir=${E2E_REPO_PATH}/.git --work-tree=${E2E_REPO_PATH} merge FETCH_HEAD; \
+        make -C ${E2E_REPO_PATH} build; \
+        # operators are built, now copy the operators' binaries to make them available for CI \
+        cp ${MEMBER_REPO_PATH}/build/_output/bin/${REPO_NAME} build/_output/bin/run; \
+        # store image name that should be used for deployment \
+        echo "registry.svc.ci.openshift.org/${OPENSHIFT_BUILD_NAMESPACE}/stable:generic-deployment" > ${E2E_REPO_PATH}${FILE_WITH_IMAGE_NAME}; \
 	fi;
-	$(MAKE) -C ${E2E_REPO_PATH} build
+endif
+
+.PHONY: reset-tmp
+reset-tmp: clean-tmp
+ifneq ($(E2E_REPO_PATH),)
+	mkdir ${E2E_REPO_PATH}/tmp
+endif
+
+.PHONY: clean-tmp
+clean-tmp:
+ifneq ($(E2E_REPO_PATH),)
+	-rm -rf ${E2E_REPO_PATH}/tmp 2> /dev/null
 endif
 
 ###########################################################
@@ -192,7 +208,7 @@ ifeq ($(SET_IMAGE_NAME),)
 			docker build -f ${E2E_REPO_PATH}/build/Dockerfile -t ${IMAGE_NAME} ${E2E_REPO_PATH}
         else
 			# if is running in CI than we expect that it's PR for toolchain-e2e repo (none of the images was provided), so use name that was used by openshift-ci
-			$(eval IMAGE_NAME := registry.svc.ci.openshift.org/${OPENSHIFT_BUILD_NAMESPACE}/stable:${REPO_NAME})
+			$(eval IMAGE_NAME := $(shell cat ${E2E_REPO_PATH}${FILE_WITH_IMAGE_NAME})
         endif
     else
 		# an image name of the other operator was provided, then we don't have anything built for this one => use image built from master
@@ -203,4 +219,5 @@ else
 	$(eval IMAGE_NAME := ${SET_IMAGE_NAME})
 endif
 	sed -e 's|REPLACE_IMAGE|${IMAGE_NAME}|g' ${E2E_REPO_PATH}/deploy/operator.yaml | oc apply -f -
+#	$(MAKE) clean-tmp E2E_REPO_PATH=${E2E_REPO_PATH}
 
