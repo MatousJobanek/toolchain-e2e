@@ -9,7 +9,7 @@ ENV OPERATOR=/usr/local/bin/host-operator \
     LANG=en_US.utf8
 
 # install operator binary
-COPY host-operator ${OPERATOR}
+COPY bin/host-operator ${OPERATOR}
 
 USER ${USER_UID}
 
