@@ -161,9 +161,14 @@ func TestUpdateNSTemplateTier(t *testing.T) {
 	// setup chocolate tier to be used for creating spaces without usersignups
 	spaces := setupSpaces(t, awaitilities, "chocolate", "chocolatelover%02d", memberAwait, count)
 
-	cheesecakeSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cheesecakeSyncIndexes, "cheesecake", "base", "base", true)
-	cookieSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cookieSyncIndexes, "cookie", "base", "base", true)
-	verifyResourceUpdatesForSpaces(t, awaitilities, memberAwait, spaces, "chocolate", "base", "base")
+	cheescakeCtx := tiers.ForTier("cheesecake").WithAllRefsFrom("base")
+	cheesecakeSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cheesecakeSyncIndexes, cheescakeCtx, true)
+
+	cookieCtx := tiers.ForTier("cookie").WithAllRefsFrom("base")
+	cookieSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cookieSyncIndexes, cookieCtx, true)
+
+	chocolateCtx := tiers.ForTier("chocolate").WithAllRefsFrom("base")
+	verifyResourceUpdatesForSpaces(t, awaitilities, memberAwait, spaces, chocolateCtx)
 
 	// when updating the "cheesecakeTier" tier with the "advanced" template refs for namespaces (ie, same number of namespaces) but keep the ClusterResources refs
 	updateTemplateTier(t, hostAwait, "cheesecake", "advanced", "")
@@ -173,9 +178,14 @@ func TestUpdateNSTemplateTier(t *testing.T) {
 	updateTemplateTier(t, hostAwait, "chocolate", "advanced", "")
 
 	// then
-	cheesecakeSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cheesecakeSyncIndexes, "cheesecake", "advanced", "base", false)
-	cookieSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cookieSyncIndexes, "cookie", "baseextendedidling", "baseextendedidling", false)
-	verifyResourceUpdatesForSpaces(t, awaitilities, memberAwait, spaces, "chocolate", "advanced", "base")
+	cheescakeCtx = tiers.ForTier("cheesecake").WithNamespaceTemplatesFrom("advanced").WithClusterResourcesFrom("base")
+	cheesecakeSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cheesecakeSyncIndexes, cheescakeCtx, false)
+
+	cookieCtx = tiers.ForTier("cookie").WithAllRefsFrom("baseextendedidling")
+	cookieSyncIndexes = verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cookieSyncIndexes, cookieCtx, false)
+
+	chocolateCtx = tiers.ForTier("chocolate").WithNamespaceTemplatesFrom("advanced").WithClusterResourcesFrom("base")
+	verifyResourceUpdatesForSpaces(t, awaitilities, memberAwait, spaces, chocolateCtx)
 
 	// when updating the "cheesecakeTier" tier with the "advanced" template refs for ClusterResources but keep the Namespaces refs
 	updateTemplateTier(t, hostAwait, "cheesecake", "", "advanced")
@@ -185,9 +195,14 @@ func TestUpdateNSTemplateTier(t *testing.T) {
 	updateTemplateTier(t, hostAwait, "chocolate", "", "advanced")
 
 	// then
-	verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cheesecakeSyncIndexes, "cheesecake", "advanced", "advanced", false)
-	verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cookieSyncIndexes, "cookie", "base", "base", false)
-	verifyResourceUpdatesForSpaces(t, awaitilities, memberAwait, spaces, "chocolate", "advanced", "advanced")
+	cheescakeCtx = tiers.ForTier("cheesecake").WithAllRefsFrom("advanced")
+	verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cheesecakeSyncIndexes, cheescakeCtx, false)
+
+	cookieCtx = tiers.ForTier("cookie").WithAllRefsFrom("base")
+	verifyResourceUpdatesForUserSignups(t, awaitilities, memberAwait, cookieSyncIndexes, cookieCtx, false)
+
+	chocolateCtx = tiers.ForTier("chocolate").WithAllRefsFrom("advanced")
+	verifyResourceUpdatesForSpaces(t, awaitilities, memberAwait, spaces, chocolateCtx)
 
 	// finally, verify the counters in the status.history for both 'cheesecake' and 'cookie' tiers
 	// cheesecake tier
@@ -338,7 +353,7 @@ func verifyStatus(t *testing.T, hostAwait *HostAwaitility, tierName string, expe
 	}
 }
 
-func verifyResourceUpdatesForUserSignups(t *testing.T, awaitilities Awaitilities, memberAwaitility *MemberAwaitility, syncIndexes map[string]string, tierName, aliasTierNamespaces, aliasTierClusterResources string, tierNameChanged bool) map[string]string {
+func verifyResourceUpdatesForUserSignups(t *testing.T, awaitilities Awaitilities, memberAwaitility *MemberAwaitility, syncIndexes map[string]string, tierCtx *tiers.TierContext, tierNameChanged bool) map[string]string {
 
 	// verify that all TemplateUpdateRequests were deleted
 	hostAwait := awaitilities.Host()
@@ -372,13 +387,13 @@ func verifyResourceUpdatesForUserSignups(t *testing.T, awaitilities Awaitilities
 		require.NotNil(t, userAccount)
 
 		// verify space and tier resources are correctly updated
-		VerifyResourcesProvisionedForSpaceWithTiers(t, awaitilities, memberAwaitility, mur.Name, tierName, aliasTierNamespaces, aliasTierClusterResources)
+		VerifyResourcesProvisionedForSpaceWithTiers(t, awaitilities, memberAwaitility, mur.Name, tierCtx)
 	}
 
 	return updatedSyncIndexes
 }
 
-func verifyResourceUpdatesForSpaces(t *testing.T, awaitilities Awaitilities, targetCluster *MemberAwaitility, spaces []string, tierName, aliasTierNamespaces, aliasTierClusterResources string) {
+func verifyResourceUpdatesForSpaces(t *testing.T, awaitilities Awaitilities, targetCluster *MemberAwaitility, spaces []string, tierCtx *tiers.TierContext) {
 	// verify that all TemplateUpdateRequests were deleted
 	hostAwait := awaitilities.Host()
 	err := hostAwait.WaitForTemplateUpdateRequests(hostAwait.Namespace, 0)
@@ -386,7 +401,7 @@ func verifyResourceUpdatesForSpaces(t *testing.T, awaitilities Awaitilities, tar
 
 	// verify individual space updates
 	for _, spaceName := range spaces {
-		VerifyResourcesProvisionedForSpaceWithTiers(t, awaitilities, targetCluster, spaceName, tierName, aliasTierNamespaces, aliasTierClusterResources)
+		VerifyResourcesProvisionedForSpaceWithTiers(t, awaitilities, targetCluster, spaceName, tierCtx)
 	}
 }
 

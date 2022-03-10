@@ -48,11 +48,11 @@ var (
 )
 
 // GetRefsAndChecksForTiers returns refs for the given tierName, namespaceChecks for aliasTierNamespaces and CusterResourcesChecks for aliasTierClusterResources
-func GetRefsAndChecksForTiers(t *testing.T, hostAwait *wait.HostAwaitility, tierName, aliasTierNamespaces, aliasTierClusterResources string) (TemplateRefs, TierChecks, TierChecks) {
-	templateRefs := GetTemplateRefs(hostAwait, tierName)
-	namespacesChecks, err := NewChecks(aliasTierNamespaces)
+func GetRefsAndChecksForTiers(t *testing.T, hostAwait *wait.HostAwaitility, tierCtx *TierContext) (TemplateRefs, TierChecks, TierChecks) {
+	templateRefs := GetTemplateRefs(hostAwait, tierCtx.TierName)
+	namespacesChecks, err := NewChecks(tierCtx.NamespaceRefsTierName)
 	require.NoError(t, err)
-	clusterResourcesChecks, err := NewChecks(aliasTierClusterResources)
+	clusterResourcesChecks, err := NewChecks(tierCtx.ClusterResourcesRefsTierName)
 	require.NoError(t, err)
 
 	return templateRefs, namespacesChecks, clusterResourcesChecks

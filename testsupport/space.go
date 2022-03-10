@@ -134,21 +134,21 @@ func VerifyResourcesProvisionedForSpace(t *testing.T, awaitilities wait.Awaitili
 
 // Same as VerifyResourcesProvisionedForSpaceWithTiers but reuses the provided tier name for the namespace and cluster resources names
 func VerifyResourcesProvisionedForSpaceWithTier(t *testing.T, awaitilities wait.Awaitilities, targetCluster *wait.MemberAwaitility, spaceName, tierName string) *toolchainv1alpha1.Space {
-	return VerifyResourcesProvisionedForSpaceWithTiers(t, awaitilities, targetCluster, spaceName, tierName, tierName, tierName)
+	return VerifyResourcesProvisionedForSpaceWithTiers(t, awaitilities, targetCluster, spaceName, tiers.ForTier(tierName))
 }
 
 // VerifyResourcesProvisionedForSpaceWithTiers verifies that the Space for the given name is provisioned with all needed labels and conditions.
 // It also checks the NSTemplateSet and that all related namespace-scoped resources are provisoned for the given aliasTierNamespaces, and cluster scoped resources for aliasTierClusterResources.
-func VerifyResourcesProvisionedForSpaceWithTiers(t *testing.T, awaitilities wait.Awaitilities, targetCluster *wait.MemberAwaitility, spaceName, tierName, aliasTierNamespaces, aliasTierClusterResources string) *toolchainv1alpha1.Space {
-	tier, err := awaitilities.Host().WaitForNSTemplateTier(tierName)
+func VerifyResourcesProvisionedForSpaceWithTiers(t *testing.T, awaitilities wait.Awaitilities, targetCluster *wait.MemberAwaitility, spaceName string, tierCtx *tiers.TierContext) *toolchainv1alpha1.Space {
+	tier, err := awaitilities.Host().WaitForNSTemplateTier(tierCtx.TierName)
 	require.NoError(t, err)
 	hash, err := testtier.ComputeTemplateRefsHash(tier) // we can assume the JSON marshalling will always work
 	require.NoError(t, err)
 
 	// wait for space to be fully provisioned
 	space, err := awaitilities.Host().WaitForSpace(spaceName,
-		wait.UntilSpaceHasTier(tierName),
-		wait.UntilSpaceHasLabelWithValue(fmt.Sprintf("toolchain.dev.openshift.com/%s-tier-hash", tierName), hash),
+		wait.UntilSpaceHasTier(tierCtx.TierName),
+		wait.UntilSpaceHasLabelWithValue(fmt.Sprintf("toolchain.dev.openshift.com/%s-tier-hash", tierCtx.TierName), hash),
 		wait.UntilSpaceHasConditions(Provisioned()),
 		wait.UntilSpaceHasStateLabel(toolchainv1alpha1.SpaceStateLabelValueClusterAssigned),
 		wait.UntilSpaceHasStatusTargetCluster(targetCluster.ClusterName))
@@ -167,16 +167,16 @@ func VerifyResourcesProvisionedForSpaceWithTiers(t *testing.T, awaitilities wait
 	}
 
 	// get refs & checks
-	templateRefs, namespacesChecks, clusterResourcesChecks := tiers.GetRefsAndChecksForTiers(t, awaitilities.Host(), tierName, aliasTierNamespaces, aliasTierClusterResources)
+	templateRefs, namespacesChecks, clusterResourcesChecks := tiers.GetRefsAndChecksForTiers(t, awaitilities.Host(), tierCtx)
 
 	// get NSTemplateSet
-	nsTemplateSet, err := targetCluster.WaitForNSTmplSet(spaceName, wait.UntilNSTemplateSetHasTier(tierName), wait.UntilNSTemplateSetHasConditions(Provisioned()))
+	nsTemplateSet, err := targetCluster.WaitForNSTmplSet(spaceName, wait.UntilNSTemplateSetHasTier(tierCtx.TierName), wait.UntilNSTemplateSetHasConditions(Provisioned()))
 	require.NoError(t, err)
 
 	// verify NSTemplateSet with namespace & cluster scoped resources
 	tiers.VerifyGivenNsTemplateSet(t, targetCluster, nsTemplateSet, namespacesChecks, clusterResourcesChecks, templateRefs)
 
-	if aliasTierNamespaces == "appstudio" {
+	if tierCtx.ClusterResourcesRefsTierName == "appstudio" {
 		// checks that namespace exists and has the expected label(s)
 		ns, err := targetCluster.WaitForNamespace(space.Name, tier.Spec.Namespaces[0].TemplateRef, space.Spec.TierName, wait.UntilNamespaceIsActive())
 		require.NoError(t, err)
