@@ -169,6 +169,8 @@ execute-tests:
 	-oc get Space -n ${HOST_NS}
 	@echo "Status of ToolchainStatus"
 	-oc get ToolchainStatus -n ${HOST_NS} -o yaml
+	@echo "Content of SpaceProvisionerConfigs"
+	-oc get SpaceProvisionerConfig -n ${HOST_NS} -o yaml
 	@echo "Starting test $(shell date)"
 	# NOTE: The "-count=1" is the idiomatic way of turning off the test result cache according to https://pkg.go.dev/cmd/go#hdr-Testing_flags.
 	# One might wonder whether the word "idiomatic" shouldn't have been spelled with 2 letters less there.
