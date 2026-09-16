@@ -30,18 +30,7 @@ func TestNoProvisioningState(t *testing.T) {
 	require.NoError(t, err)
 
 	// then
-	us, err := hostAwait.WaitForUserSignup(t, user.UserSignup.Name, wait.UntilUserSignupHasConditions(
-		append(wait.Default(),
-			toolchainv1alpha1.Condition{
-				Type:   toolchainv1alpha1.UserSignupComplete,
-				Status: corev1.ConditionTrue,
-				Reason: toolchainv1alpha1.UserSignupInNoProvisioningStateReason,
-			},
-			toolchainv1alpha1.Condition{
-				Type:   toolchainv1alpha1.UserSignupApproved,
-				Status: corev1.ConditionFalse,
-				Reason: toolchainv1alpha1.UserSignupInNoProvisioningStateReason,
-			})...))
+	us, err := hostAwait.WaitForUserSignup(t, user.UserSignup.Name, noProvisioningConditionsCriteria)
 	require.NoError(t, err)
 	require.Empty(t, us.Status.CompliantUsername)
 
@@ -54,6 +43,47 @@ func TestNoProvisioningState(t *testing.T) {
 	err = hostAwait.Client.List(context.TODO(), spaces, client.MatchingLabels{toolchainv1alpha1.SpaceCreatorLabelKey: user.UserSignup.Name})
 	require.NoError(t, err)
 	require.Empty(t, spaces.Items)
+
+	t.Run("removing no-provisioning triggers provisioning", func(t *testing.T) {
+		// when
+		_, err = wait.For(t, hostAwait.Awaitility, &toolchainv1alpha1.UserSignup{}).
+			Update(user.UserSignup.Name, hostAwait.Namespace, func(us *toolchainv1alpha1.UserSignup) {
+				states.SetNoProvisioning(us, false)
+			})
+
+		// then
+		VerifyResourcesProvisionedForSignup(t, awaitilities, us)
+	})
+}
+
+var noProvisioningConditionsCriteria = wait.UntilUserSignupHasConditions(
+	append(wait.Default(),
+		toolchainv1alpha1.Condition{
+			Type:   toolchainv1alpha1.UserSignupComplete,
+			Status: corev1.ConditionTrue,
+			Reason: toolchainv1alpha1.UserSignupInNoProvisioningStateReason,
+		},
+		toolchainv1alpha1.Condition{
+			Type:   toolchainv1alpha1.UserSignupApproved,
+			Status: corev1.ConditionFalse,
+			Reason: toolchainv1alpha1.UserSignupInNoProvisioningStateReason,
+		})...)
+
+func TestGatingOnlyResultsInNoProvisioningState(t *testing.T) {
+	// given
+	t.Parallel()
+	awaitilities := WaitForDeployments(t)
+	hostAwait := awaitilities.Host()
+
+	// when
+	user := NewSignupRequest(awaitilities).
+		GatingOnly().
+		Execute(t)
+
+	// then
+	us, err := hostAwait.WaitForUserSignup(t, user.UserSignup.Name, noProvisioningConditionsCriteria, wait.UntilUserSignupHasStates(toolchainv1alpha1.UserSignupStateNoProvisioning))
+	require.NoError(t, err)
+	require.Empty(t, us.Status.CompliantUsername)
 
 	t.Run("removing no-provisioning triggers provisioning", func(t *testing.T) {
 		// when

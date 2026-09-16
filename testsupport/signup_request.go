@@ -56,6 +56,7 @@ type SignupRequest struct {
 	accountNumber        string
 	cleanupDisabled      bool
 	noSpace              bool
+	gatingOnly           bool
 	activationCode       string
 	space                *toolchainv1alpha1.Space
 	spaceTier            string
@@ -185,6 +186,12 @@ func (r *SignupRequest) NoSpace() *SignupRequest {
 	return r
 }
 
+// GatingOnly adds signup request parameter to go through gating steps only
+func (r *SignupRequest) GatingOnly() *SignupRequest {
+	r.gatingOnly = true
+	return r
+}
+
 // SpaceTier specifies the tier of the Space
 func (r *SignupRequest) SpaceTier(spaceTier string) *SignupRequest {
 	r.spaceTier = spaceTier
@@ -247,6 +254,9 @@ func (r *SignupRequest) Execute(t *testing.T) *SignupResult {
 	queryParams := map[string]string{}
 	if r.noSpace {
 		queryParams["no-space"] = "true"
+	}
+	if r.gatingOnly {
+		queryParams["gating-only"] = "true"
 	}
 
 	// Call the signup POST endpoint
